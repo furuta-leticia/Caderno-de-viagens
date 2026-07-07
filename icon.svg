@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#F7F7F4"/>
+  <!-- linhas de caderno -->
+  <g stroke="#E4E4DE" stroke-width="6">
+    <line x1="120" y1="188" x2="392" y2="188"/>
+    <line x1="120" y1="256" x2="392" y2="256"/>
+    <line x1="120" y1="324" x2="392" y2="324"/>
+  </g>
+  <!-- margem azul (caneta-tinteiro) -->
+  <line x1="150" y1="120" x2="150" y2="392" stroke="#33526E" stroke-width="5" opacity="0.55"/>
+  <!-- carimbo vermelho (hanko) -->
+  <rect x="300" y="300" width="92" height="92" rx="14" fill="#B4472E"/>
+  <text x="346" y="366" font-family="Georgia, serif" font-size="58" fill="#F7F7F4" text-anchor="middle">わ</text>
+</svg>
