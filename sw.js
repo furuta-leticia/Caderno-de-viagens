@@ -1,8 +1,9 @@
 /* Caderno de Viagem — service worker
    Guarda o "casco" do app em cache para abrir 100% offline (cold start).
    Os DADOS ficam em localStorage/IndexedDB, não passam por aqui. */
-const CACHE = 'caderno-v1';
-const ASSETS = ['./', './index.html', './manifest.json', './icon.svg', './icon-192.png', './icon-512.png'];
+const CACHE = 'caderno-v2';
+const ASSETS = ['./', './index.html', './manifest.json', './icon.svg', './icon-192.png', './icon-512.png',
+  './css/style.css', './js/app.js'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
