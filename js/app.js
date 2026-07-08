@@ -148,7 +148,7 @@ function renderAcomodacoes(){
     const nights = a.checkinDate&&a.checkoutDate ?
       Math.max(1,Math.round((new Date(a.checkoutDate)-new Date(a.checkinDate))/864e5)) : null;
     const guestTag=guests>1?`<span class="tag">${guests} hóspede${guests>1?'s':''}</span>`:'';
-    const unpaidTag=!a.paid?`<span class="tag unpaid">Pendente${a.paymentDueDate?` · vence ${fmtDate(a.paymentDueDate)}`:''}</span>`:'';
+    const unpaidIcon=!a.paid?`<div class="unpaid-icon" title="${esc(a.paymentDueDate?`Pendente · vence ${fmtDate(a.paymentDueDate)}`:'Pendente')}" aria-label="Pagamento pendente"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg></div>`:'';
     const isPast=isPastItem('acomodacoes',a)?' is-past':'';
     const location=a.location?`<a class="map-link" href="${mapLinkFor('acomodacoes',a)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(a.location)}</a>`:'';
     const checkoutLine=a.checkoutDate?`<div class="sub">saída ${fmtDate(a.checkoutDate)}</div>`:'';
@@ -157,14 +157,13 @@ function renderAcomodacoes(){
       <div class="body">
         <div class="title">${esc(a.name||'Sem nome')}</div>
         <div class="meta">
-          ${unpaidTag}
           ${plat}
           ${guestTag}
           ${location?`<span>${location}</span>`:''}
           ${a.checkinTime||a.checkoutTime?`<span class="mono">in ${esc(a.checkinTime||'—')} · out ${esc(a.checkoutTime||'—')}</span>`:''}
         </div>
       </div>
-      <div class="price">${share?esc(money(share,cur)):''}${guests>1?`<div class="sub">por pessoa</div>`:''}</div>
+      <div class="price">${share?esc(money(share,cur)):''}${guests>1?`<div class="sub">por pessoa</div>`:''}${unpaidIcon}</div>
     </div>`;
   }).join('');
 }

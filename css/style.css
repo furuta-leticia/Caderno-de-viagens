@@ -83,9 +83,10 @@ main{padding:8px var(--pad) 96px}
 .tag{font-family:var(--mono);font-size:calc(10.5px * var(--font-scale));letter-spacing:.5px;text-transform:uppercase;
   color:var(--ink-soft);border:1px solid var(--rule);border-radius:4px;padding:1px 6px}
 .tag.plat{color:var(--accent);border-color:var(--accent-soft);background:var(--accent-soft)}
-.tag.unpaid{color:var(--seal);border-color:rgba(180,71,46,.35);background:rgba(180,71,46,.08)}
 .price{flex:0 0 auto;font-family:var(--mono);font-size:calc(13px * var(--font-scale));color:var(--ink);text-align:right;padding-top:2px}
 .price .sub{font-size:calc(11px * var(--font-scale));color:var(--ink-faint);margin-top:2px}
+.unpaid-icon{margin-top:4px;color:var(--seal)}
+.unpaid-icon svg{width:15px;height:15px;vertical-align:middle}
 .clip{display:inline-flex;align-items:center;gap:3px;color:var(--accent);font-size:calc(12px * var(--font-scale))}
 .map-link{color:var(--accent);text-decoration:none;font-weight:600}
 .map-link:hover{text-decoration:underline}
