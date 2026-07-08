@@ -148,6 +148,7 @@ function renderAcomodacoes(){
     const nights = a.checkinDate&&a.checkoutDate ?
       Math.max(1,Math.round((new Date(a.checkoutDate)-new Date(a.checkinDate))/864e5)) : null;
     const guestTag=guests>1?`<span class="tag">${guests} hóspede${guests>1?'s':''}</span>`:'';
+    const unpaidTag=!a.paid?`<span class="tag unpaid">Pendente${a.paymentDueDate?` · vence ${fmtDate(a.paymentDueDate)}`:''}</span>`:'';
     const isPast=isPastItem('acomodacoes',a)?' is-past':'';
     const location=a.location?`<a class="map-link" href="${mapLinkFor('acomodacoes',a)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(a.location)}</a>`:'';
     const checkoutLine=a.checkoutDate?`<div class="sub">saída ${fmtDate(a.checkoutDate)}</div>`:'';
@@ -156,6 +157,7 @@ function renderAcomodacoes(){
       <div class="body">
         <div class="title">${esc(a.name||'Sem nome')}</div>
         <div class="meta">
+          ${unpaidTag}
           ${plat}
           ${guestTag}
           ${location?`<span>${location}</span>`:''}
@@ -303,7 +305,7 @@ function formAcomodacao(a){
     </div>
     <div class="two">
       <div class="field"><label>Hóspedes</label>
-        <input id="f_guests" type="number" min="1" step="1" value="${esc(String(a.guests ?? 1))}" placeholder="1"></div>
+        <select id="f_guests">${[1,2,3,4,5].map(n=>`<option value="${n}" ${Number(a.guests??1)===n?'selected':''}>${n}</option>`).join('')}</select></div>
       <div class="field">
         <label class="check-row"><input id="f_paid" type="checkbox" ${a.paid?'checked':''}> Pago</label>
       </div>

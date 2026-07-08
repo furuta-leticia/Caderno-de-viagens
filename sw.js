@@ -1,7 +1,7 @@
 /* Caderno de Viagem — service worker
    Guarda o "casco" do app em cache para abrir 100% offline (cold start).
    Os DADOS ficam em localStorage/IndexedDB, não passam por aqui. */
-const CACHE = 'caderno-v3';
+const CACHE = 'caderno-v4';
 const ASSETS = ['./', './index.html', './manifest.json', './icon.svg', './icon-192.png', './icon-512.png',
   './css/style.css', './js/app.js'];
 
