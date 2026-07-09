@@ -31,7 +31,11 @@ function fmtDateFull(iso){
   return new Intl.DateTimeFormat('pt-BR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'}).format(d);
 }
 function mapsSearch(q){return 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(q);}
-function mapsDir(a,b){return 'https://www.google.com/maps/dir/?api=1&origin='+encodeURIComponent(a||'')+'&destination='+encodeURIComponent(b||'');}
+function mapsDir(a,b,waypoints){
+  let url = 'https://www.google.com/maps/dir/?api=1&origin='+encodeURIComponent(a||'')+'&destination='+encodeURIComponent(b||'');
+  if(waypoints && waypoints.length) url += '&waypoints='+waypoints.map(w=>encodeURIComponent(w)).join('%7C');
+  return url;
+}
 function compareDateTime(date,time){
   if(!date) return null;
   const dt = new Date(`${date}T${time||'00:00'}`);
@@ -68,11 +72,27 @@ function sortByRecency(kind,list){
 }
 function mapLinkFor(kind,x){
   if(kind==='deslocamentos'){
-    if(x.from||x.to) return mapsDir(x.from,x.to);
+    if(x.from||x.to) return mapsDir(x.from,x.to,connsOf(x).map(c=>c.city));
     return '';
   }
   if(x.location) return mapsSearch(x.location);
   return '';
+}
+
+/* ---- Conexões / escalas ---- */
+function connsOf(d){
+  return (Array.isArray(d.connections)?d.connections:[]).filter(c=>c && c.city);
+}
+function legsFor(d){
+  const conns=connsOf(d);
+  const legs=[];
+  let curFrom=d.from, curDepart=d.departTime, curType=d.type, curCompany=d.company;
+  conns.forEach(c=>{
+    legs.push({from:curFrom,to:c.city,departTime:curDepart,arriveTime:c.arriveTime,type:curType,company:curCompany});
+    curFrom=c.city; curDepart=c.departTime; curType=c.type||curType; curCompany=c.company||curCompany;
+  });
+  legs.push({from:curFrom,to:d.to,departTime:curDepart,arriveTime:d.arriveTime,type:curType,company:curCompany});
+  return legs;
 }
 
 /* ---------- estado ---------- */
@@ -170,15 +190,16 @@ function renderAcomodacoes(){
 
 /* ---- Deslocamentos ---- */
 const TRANS_ICON={Voo:'✈',Trem:'🚆',Ônibus:'🚌',Ferry:'⛴',Carro:'🚗',Metrô:'🚇',Outro:'•'};
-function travelDur(d){
-  if(!d.departTime||!d.arriveTime)return '';
-  const [dh,dm]=d.departTime.split(':').map(Number);
-  const [ah,am]=d.arriveTime.split(':').map(Number);
+function durHM(start,end){
+  if(!start||!end)return '';
+  const [dh,dm]=start.split(':').map(Number);
+  const [ah,am]=end.split(':').map(Number);
   let mins=(ah*60+am)-(dh*60+dm);
   if(mins<=0)mins+=24*60;
   const h=Math.floor(mins/60),m=mins%60;
   return h?(m?`${h}h${String(m).padStart(2,'0')}`:`${h}h`):`${m}min`;
 }
+function travelDur(d){return durHM(d.departTime,d.arriveTime);}
 function renderDeslocamentos(){
   const list=sortByRecency('deslocamentos', items('deslocamentos'));
   if(!list.length) return emptyState(ICO.route,'Nenhum deslocamento ainda',
@@ -193,7 +214,10 @@ function renderDeslocamentos(){
       const dur=travelDur(d);
       const isPast=isPastItem('deslocamentos',d)?' is-past':'';
       const routeHref=mapLinkFor('deslocamentos',d);
-      const routeLabel=routeHref?`<a class="map-link" href="${routeHref}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(d.from||'?')} → ${esc(d.to||'?')}</a>`:`${esc(d.from||'?')} → ${esc(d.to||'?')}`;
+      const conns=connsOf(d);
+      const routeText=[esc(d.from||'?'),...conns.map(c=>esc(c.city)),esc(d.to||'?')].join(' → ');
+      const routeLabel=routeHref?`<a class="map-link" href="${routeHref}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${routeText}</a>`:routeText;
+      const connTag=conns.length?`<span class="tag conn">${conns.length} ${conns.length>1?'conexões':'conexão'}: ${conns.map(c=>{const lay=durHM(c.arriveTime,c.departTime);return esc(c.city)+(lay?` (${lay})`:'');}).join(', ')}</span>`:'';
       return `<div class="row${isPast}" data-open="deslocamentos:${d.id}">
         <div class="gutter">${esc(d.departTime||'—')}${d.arriveTime?`<div class="sub">${esc(d.arriveTime)}</div>`:''}</div>
         <div class="body">
@@ -201,6 +225,7 @@ function renderDeslocamentos(){
           <div class="meta">
             ${d.type?`<span class="tag">${esc(d.type)}</span>`:''}
             ${d.company?`<span>${esc(d.company)}</span>`:''}
+            ${connTag}
           </div>
         </div>
         <div class="price">${d.cost?esc(money(d.cost,cur)):''}</div>
@@ -282,9 +307,11 @@ function formatTimeValue(value){
   const min=String(Math.min(59,Math.max(0,Number(m[2])))).padStart(2,'0');
   return `${h}:${min}`;
 }
-function timePickerHTML(id,value){
+function timePickerHTML(id,value,extraClass){
   const v=formatTimeValue(value);
-  return `<input id="${esc(id)}" type="time" class="mono-in" value="${esc(v)}">`;
+  const idAttr=id?`id="${esc(id)}" `:'';
+  const cls=extraClass?' '+extraClass:'';
+  return `<input ${idAttr}type="time" class="mono-in${cls}" value="${esc(v)}">`;
 }
 
 /* ---------- Formulário: Alojamento ---------- */
@@ -337,26 +364,65 @@ function formAcomodacao(a){
 }
 
 /* ---------- Formulário: Deslocamento ---------- */
+const TRANS_TYPES=['Voo','Trem','Ônibus','Ferry','Carro','Metrô','Outro'];
+function connectionBlockHTML(c){
+  c=c||{};
+  return `<div class="conn-block">
+    <div class="conn-block-head">
+      <span>Conexão / escala</span>
+      <button type="button" class="btn ghost sm" data-remove-conn>Remover</button>
+    </div>
+    <div class="field"><label>Cidade / estação / aeroporto intermediário</label>
+      <input class="f_conn_city" value="${esc(c.city)}" placeholder="Ex.: Madrid"></div>
+    <div class="two">
+      <div class="field"><label>Chegada nessa cidade</label>${timePickerHTML('', c.arriveTime, 'f_conn_arr')}</div>
+      <div class="field"><label>Partida do próximo trecho</label>${timePickerHTML('', c.departTime, 'f_conn_dep')}</div>
+    </div>
+    <div class="two">
+      <div class="field"><label>Tipo do próximo trecho</label>
+        <select class="f_conn_type">${['',...TRANS_TYPES].map(t=>`<option value="${esc(t)}" ${((c.type||'')===t)?'selected':''}>${t||'Mesmo tipo'}</option>`).join('')}</select></div>
+      <div class="field"><label>Companhia do próximo trecho</label>
+        <input class="f_conn_company" value="${esc(c.company)}" placeholder="Deixe vazio pra manter a mesma"></div>
+    </div>
+  </div>`;
+}
+function wireConnections(){
+  const list=$('#f_connections');
+  const addBtn=$('[data-add-conn]');
+  if(addBtn) addBtn.addEventListener('click',()=>{
+    list.insertAdjacentHTML('beforeend', connectionBlockHTML({}));
+  });
+  if(list) list.addEventListener('click',e=>{
+    const rm=e.target.closest('[data-remove-conn]');
+    if(rm) rm.closest('.conn-block').remove();
+  });
+}
 function formDeslocamento(d){
   d=d||{};
   sheet(`
     <h2>${d.id?'Editar deslocamento':'Novo deslocamento'}</h2>
     <div class="two">
       <div class="field"><label>Tipo</label>
-        <select id="f_type">${['Voo','Trem','Ônibus','Ferry','Carro','Metrô','Outro'].map(t=>`<option ${d.type===t?'selected':''}>${t}</option>`).join('')}</select></div>
+        <select id="f_type">${TRANS_TYPES.map(t=>`<option ${d.type===t?'selected':''}>${t}</option>`).join('')}</select></div>
       <div class="field"><label>Companhia</label>
         <input id="f_company" value="${esc(d.company)}" placeholder="Ex.: Trenitalia, Ryanair"></div>
     </div>
     <div class="two">
       <div class="field"><label>Partida — local</label><input id="f_from" value="${esc(d.from)}" placeholder="Cidade / estação"></div>
-      <div class="field"><label>Chegada — local</label><input id="f_to" value="${esc(d.to)}" placeholder="Cidade / estação"></div>
+      <div class="field"><label>Chegada final — local</label><input id="f_to" value="${esc(d.to)}" placeholder="Cidade / estação"></div>
     </div>
     <div class="field"><label>Partida — data</label><input id="f_dep_d" type="date" class="mono-in" value="${esc(d.departDate)}"></div>
     <div class="two">
       <div class="field"><label>Partida — hora</label>${timePickerHTML('f_dep_t', d.departTime)}</div>
-      <div class="field"><label>Chegada — hora</label>${timePickerHTML('f_arr_t', d.arriveTime)}</div>
+      <div class="field"><label>Chegada final — hora</label>${timePickerHTML('f_arr_t', d.arriveTime)}</div>
     </div>
     <div class="hint">Se a chegada for no dia seguinte, escreva isso na observação para não confundir o registro.</div>
+    <div class="field">
+      <label>Conexões / escalas (opcional)</label>
+      <div class="hint" style="margin-top:0">Use para trocas de trem, avião com escala, baldeação etc. Adicione uma conexão para cada parada intermediária, na ordem da viagem.</div>
+      <div id="f_connections">${(d.connections||[]).map(connectionBlockHTML).join('')}</div>
+      <button type="button" class="btn ghost sm" data-add-conn>+ Adicionar conexão</button>
+    </div>
     <div class="field"><label>Valor</label>
       <input id="f_cost" class="mono-in" inputmode="decimal" value="${d.cost??''}" placeholder="0,00"></div>
     <div class="field"><label>Notas (assento, localizador, plataforma…)</label>
@@ -368,6 +434,7 @@ function formDeslocamento(d){
       <button class="btn primary" data-save="deslocamentos">Salvar</button>
     </div>`);
   wireForm('deslocamentos',d);
+  wireConnections();
 }
 
 /* ---------- Formulário: Atração ---------- */
@@ -422,6 +489,15 @@ function reopenForm(kind,obj){
 
 function val(id){const el=$('#'+id);return el?el.value.trim():'';}
 function num(id){const v=val(id).replace(',','.');return v===''?'':(Number(v)||0);}
+function collectConnections(){
+  return [...document.querySelectorAll('#f_connections .conn-block')].map(b=>({
+    city: b.querySelector('.f_conn_city').value.trim(),
+    arriveTime: b.querySelector('.f_conn_arr').value.trim(),
+    departTime: b.querySelector('.f_conn_dep').value.trim(),
+    type: b.querySelector('.f_conn_type').value,
+    company: b.querySelector('.f_conn_company').value.trim()
+  })).filter(c=>c.city||c.arriveTime||c.departTime||c.company);
+}
 
 function collect(kind){
   if(kind==='acomodacoes') return {
@@ -432,7 +508,7 @@ function collect(kind){
   if(kind==='deslocamentos') return {
     type:val('f_type'),company:val('f_company'),from:val('f_from'),to:val('f_to'),
     departDate:val('f_dep_d'),departTime:val('f_dep_t'),arriveTime:val('f_arr_t'),
-    cost:num('f_cost'),notes:val('f_notes')};
+    cost:num('f_cost'),notes:val('f_notes'),connections:collectConnections()};
   return {name:val('f_name'),location:val('f_location'),date:val('f_date'),time:val('f_time'),
     cost:num('f_cost'),url:val('f_url'),notes:val('f_notes')};
 }
@@ -483,10 +559,27 @@ function detail(kind,id){
     add('Check-out',[fmtDate(x.checkoutDate),x.checkoutTime].filter(Boolean).join(' · '),true);
     add('Notas',esc(x.notes).replace(/\n/g,'<br>'));
   }else if(kind==='deslocamentos'){
+    const conns=connsOf(x);
     add('Tipo',esc(x.type)); add('Companhia',esc(x.company));
     add('Partida',[esc(x.from),fmtDate(x.departDate),x.departTime].filter(Boolean).join(' · '),true);
-    add('Chegada',[esc(x.to),x.arriveTime].filter(Boolean).join(' · '),true);
-    add('Rota',x.from||x.to?`<a class="map-link" href="${mapsDir(x.from,x.to)}" target="_blank" rel="noopener">${[x.from,x.to].filter(Boolean).join(' → ')}</a>`:'');
+    if(conns.length){
+      const legs=legsFor(x);
+      const legsHTML=legs.map((leg,i)=>{
+        const legDur=durHM(leg.departTime,leg.arriveTime);
+        let html=`<div>${TRANS_ICON[leg.type]||'•'} <b>${esc(leg.from||'?')} → ${esc(leg.to||'?')}</b>`
+          +` — ${esc(leg.departTime||'—')} → ${esc(leg.arriveTime||'—')}${legDur?` (${legDur})`:''}`
+          +`${leg.company?` · ${esc(leg.company)}`:''}</div>`;
+        if(i<conns.length){
+          const c=conns[i];
+          const layDur=durHM(c.arriveTime,c.departTime);
+          html+=`<div style="color:var(--ink-faint);margin:2px 0 8px">Conexão em ${esc(c.city)}${layDur?` · ${layDur}`:''} (${esc(c.arriveTime||'—')} → ${esc(c.departTime||'—')})</div>`;
+        }
+        return html;
+      }).join('');
+      add('Trechos',legsHTML);
+    }
+    add('Chegada final',[esc(x.to),x.arriveTime].filter(Boolean).join(' · '),true);
+    add('Rota',x.from||x.to?`<a class="map-link" href="${mapLinkFor('deslocamentos',x)}" target="_blank" rel="noopener">${[esc(x.from),...conns.map(c=>esc(c.city)),esc(x.to)].filter(Boolean).join(' → ')}</a>`:'');
     add('Valor',x.cost?esc(money(x.cost,cur)):'',true);
     add('Notas',esc(x.notes).replace(/\n/g,'<br>'));
   }else{
@@ -499,7 +592,7 @@ function detail(kind,id){
   // botões de link
   let links='';
   if(kind==='deslocamentos' && (x.from||x.to))
-    links+=`<a class="link-btn" target="_blank" rel="noopener" href="${mapsDir(x.from,x.to)}">${ICO.map} Rota no mapa</a>`;
+    links+=`<a class="link-btn" target="_blank" rel="noopener" href="${mapLinkFor('deslocamentos',x)}">${ICO.map} Rota no mapa</a>`;
   else if(x.location)
     links+=`<a class="link-btn" target="_blank" rel="noopener" href="${mapsSearch(x.location)}">${ICO.map} Abrir no mapa</a>`;
   if(x.url) links+=`<a class="link-btn" target="_blank" rel="noopener" href="${esc(x.url)}">${ICO.ext} Abrir reserva/site</a>`;
