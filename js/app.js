@@ -108,6 +108,7 @@ function trip(){return state.trips.find(t=>t.id===state.currentTripId)||state.tr
 function items(kind){return state[kind].filter(x=>x.tripId===state.currentTripId);}
 
 let activeTab='acomodacoes';
+let activeDay=null;
 const FONT_SCALE_KEY='cadernoViagem.fontScale';
 let fontScale = Number(localStorage.getItem(FONT_SCALE_KEY)) || 1;
 function applyFontScale(scale){
@@ -136,11 +137,21 @@ function render(){
   const sum = ['acomodacoes','deslocamentos','atracoes'].reduce((a,k)=>a+sectionTotal(k),0);
   $('#tripTotal').innerHTML = 'total <b>'+esc(money(sum,cur))+'</b>';
   [...$('#tabs').children].forEach(b=>b.classList.toggle('active',b.dataset.tab===activeTab));
+  const dayTabs=$('#dayTabs');
+  if(activeTab==='roteiro'){
+    const days=getTravelDays();
+    if(!activeDay && days.length) activeDay=days[0];
+    dayTabs.classList.add('show');
+    dayTabs.innerHTML=days.map(d=>`<button data-day="${d}" class="${activeDay===d?'active':''}">${esc(fmtDate(d))}</button>`).join('');
+    dayTabs.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{activeDay=b.dataset.day;render();}));
+  }else{
+    dayTabs.classList.remove('show');
+  }
   const m=$('#main');
   if(activeTab==='acomodacoes') m.innerHTML=renderAcomodacoes();
   else if(activeTab==='deslocamentos') m.innerHTML=renderDeslocamentos();
   else if(activeTab==='resumo') m.innerHTML=renderResumo();
-  else m.innerHTML=renderAtracoes();
+  else m.innerHTML=renderRoteiroDia(activeDay);
 }
 
 function emptyState(icon,title,text){
@@ -241,7 +252,7 @@ function renderResumo(){
   const sections=[
     {key:'acomodacoes',label:'Alojamento',icon:ICO.bed},
     {key:'deslocamentos',label:'Transporte',icon:ICO.route},
-    {key:'atracoes',label:'Atrações',icon:ICO.pin}
+    {key:'atracoes',label:'Roteiro',icon:ICO.pin}
   ];
   const total=sections.reduce((s,x)=>s+sectionTotal(x.key),0);
   return `<div class="summary-card">
@@ -254,11 +265,29 @@ function renderResumo(){
   </div>`;
 }
 
-/* ---- Atrações (roteiro por dia) ---- */
-function renderAtracoes(){
+function toIsoDate(d){
+  const y=d.getFullYear();
+  const m=String(d.getMonth()+1).padStart(2,'0');
+  const day=String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+function getTravelDays(){
+  const acoms=items('acomodacoes');
+  if(!acoms.length) return [];
+  const dates=acoms.flatMap(a=>[a.checkinDate,a.checkoutDate]).filter(Boolean).sort();
+  if(!dates.length) return [];
+  const start=dates[0];
+  const end=dates[dates.length-1];
+  const days=[];
+  let cur=new Date(start+'T00:00:00');
+  const last=new Date(end+'T00:00:00');
+  while(cur<=last){days.push(toIsoDate(cur));cur.setDate(cur.getDate()+1);} 
+  return days;
+}
+function renderRoteiro(){
   const list=sortByRecency('atracoes', items('atracoes'));
   if(!list.length) return emptyState(ICO.pin,'Roteiro vazio',
-    'Monte seu roteiro dia a dia: cada atração com horário, local e link do mapa. Toque em +.');
+    'Monte seu roteiro dia a dia: cada atração com horário, local, endereço e notas. Toque em +.');
   const cur=trip().currency;
   const groups={};
   list.forEach(a=>{const k=a.date||'';(groups[k]=groups[k]||[]).push(a);});
@@ -270,12 +299,14 @@ function renderAtracoes(){
     const rows=groups[date].slice().sort((x,y)=>(x.time||'~').localeCompare(y.time||'~')).map(a=>{
       const isPast=isPastItem('atracoes',a)?' is-past':'';
       const location=a.location?`<a class="map-link" href="${mapLinkFor('atracoes',a)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(a.location)}</a>`:'';
+      const travelTag=a.travelTimeMin?`<span class="tag">${esc(`${a.travelTimeMin} min`)}</span>`:'';
       return `<div class="row${isPast}" data-open="atracoes:${a.id}">
         <div class="gutter">${a.time?esc(a.time):'—'}</div>
         <div class="body">
           <div class="title">${esc(a.name||'Atração')}</div>
           <div class="meta">
             ${location?`<span>${location}</span>`:''}
+            ${travelTag}
             ${a.notes?`<span>${esc(a.notes.slice(0,60))}${a.notes.length>60?'…':''}</span>`:''}
           </div>
         </div>
@@ -283,6 +314,29 @@ function renderAtracoes(){
       </div>`;
     }).join('');
     return head+rows;
+  }).join('');
+}
+function renderRoteiroDia(date){
+  if(!date) return emptyState(ICO.pin,'Nenhum dia selecionado','Selecione um dia acima para ver o roteiro.');
+  const entries=items('atracoes').filter(a=>a.date===date).slice().sort((x,y)=>(x.time||'~').localeCompare(y.time||'~'));
+  if(!entries.length) return emptyState(ICO.pin,'Sem atividades neste dia','Toque em + para adicionar atrações.');
+  const cur=trip().currency;
+  return entries.map(a=>{
+    const isPast=isPastItem('atracoes',a)?' is-past':'';
+    const location=a.location?`<a class="map-link" href="${mapLinkFor('atracoes',a)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(a.location)}</a>`:'';
+    const travelTag=a.travelTimeMin?`<span class="tag">${esc(`${a.travelTimeMin} min`)}</span>`:'';
+    return `<div class="row${isPast}" data-open="atracoes:${a.id}">
+      <div class="gutter">${a.time?esc(a.time):'—'}</div>
+      <div class="body">
+        <div class="title">${esc(a.name||'Atração')}</div>
+        <div class="meta">
+          ${location?`<span>${location}</span>`:''}
+          ${travelTag}
+          ${a.notes?`<span>${esc(a.notes.slice(0,60))}${a.notes.length>60?'…':''}</span>`:''}
+        </div>
+      </div>
+      <div class="price">${a.cost?esc(money(a.cost,cur)):''}</div>
+    </div>`;
   }).join('');
 }
 
@@ -450,6 +504,8 @@ function formAtracao(a){
       <div class="field"><label>Data</label><input id="f_date" type="date" class="mono-in" value="${esc(a.date)}"></div>
       <div class="field"><label>Horário</label>${timePickerHTML('f_time', a.time)}</div>
     </div>
+    <div class="field"><label>Tempo estimado de deslocamento até a próxima atração (minutos)</label>
+      <input id="f_travel_time" class="mono-in" inputmode="numeric" value="${a.travelTimeMin??''}" placeholder="Ex.: 20"></div>
     <div class="two">
       <div class="field"><label>Custo (deixe vazio se grátis)</label>
         <input id="f_cost" class="mono-in" inputmode="decimal" value="${a.cost??''}" placeholder="0,00"></div>
@@ -510,7 +566,7 @@ function collect(kind){
     departDate:val('f_dep_d'),departTime:val('f_dep_t'),arriveTime:val('f_arr_t'),
     cost:num('f_cost'),notes:val('f_notes'),connections:collectConnections()};
   return {name:val('f_name'),location:val('f_location'),date:val('f_date'),time:val('f_time'),
-    cost:num('f_cost'),url:val('f_url'),notes:val('f_notes')};
+    travelTimeMin:num('f_travel_time'),cost:num('f_cost'),url:val('f_url'),notes:val('f_notes')};
 }
 
 async function saveEntry(kind,obj){
@@ -585,6 +641,7 @@ function detail(kind,id){
   }else{
     add('Local',x.location?`<a class="map-link" href="${mapsSearch(x.location)}" target="_blank" rel="noopener">${esc(x.location)}</a>`:'');
     add('Quando',[fmtDate(x.date),x.time].filter(Boolean).join(' · '),true);
+    if(x.travelTimeMin) add('Tempo estimado',esc(`${x.travelTimeMin} min`),true);
     add('Custo',x.cost?esc(money(x.cost,cur)):'',true);
     add('Notas',esc(x.notes).replace(/\n/g,'<br>'));
   }
