@@ -72,7 +72,7 @@ function sortByRecency(kind,list){
 }
 function mapLinkFor(kind,x){
   if(kind==='deslocamentos'){
-    if(x.from||x.to) return mapsDir(x.from,x.to,connsOf(x).map(c=>c.city));
+    if(x.from||x.to) return mapsDir(x.fromAddress||x.from,x.to,connsOf(x).map(c=>c.city));
     return '';
   }
   if(x.location) return mapsSearch(x.location);
@@ -316,28 +316,48 @@ function renderRoteiro(){
     return head+rows;
   }).join('');
 }
+function renderAtracaoRow(a){
+  const cur=trip().currency;
+  const isPast=isPastItem('atracoes',a)?' is-past':'';
+  const location=a.location?`<a class="map-link" href="${mapLinkFor('atracoes',a)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(a.location)}</a>`:'';
+  const travelTag=a.travelTimeMin?`<span class="tag">${esc(`${a.travelTimeMin} min`)}</span>`:'';
+  return `<div class="row${isPast}" data-open="atracoes:${a.id}">
+    <div class="gutter">${a.time?esc(a.time):'—'}</div>
+    <div class="body">
+      <div class="title">${esc(a.name||'Atração')}</div>
+      <div class="meta">
+        ${location?`<span>${location}</span>`:''}
+        ${travelTag}
+        ${a.notes?`<span>${esc(a.notes.slice(0,60))}${a.notes.length>60?'…':''}</span>`:''}
+      </div>
+    </div>
+    <div class="price">${a.cost?esc(money(a.cost,cur)):''}</div>
+  </div>`;
+}
+function renderTransladoRow(d){
+  const cur=trip().currency;
+  const isPast=isPastItem('deslocamentos',d)?' is-past':'';
+  const departAddr=d.fromAddress||d.from;
+  const departLink=departAddr?`<a class="map-link" href="${mapsSearch(departAddr)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(departAddr)}</a>`:'';
+  return `<div class="row${isPast}" data-open="deslocamentos:${d.id}">
+    <div class="gutter">${d.departTime?esc(d.departTime):'—'}</div>
+    <div class="body">
+      <div class="title">${TRANS_ICON[d.type]||'•'} ${esc(d.from||'?')} → ${esc(d.to||'?')}</div>
+      <div class="meta">
+        ${departLink?`<span>${departLink}</span>`:''}
+        ${d.type?`<span class="tag">${esc(d.type)}</span>`:''}
+      </div>
+    </div>
+    <div class="price">${d.cost?esc(money(d.cost,cur)):''}</div>
+  </div>`;
+}
 function renderRoteiroDia(date){
   if(!date) return emptyState(ICO.pin,'Nenhum dia selecionado','Selecione um dia acima para ver o roteiro.');
-  const entries=items('atracoes').filter(a=>a.date===date).slice().sort((x,y)=>(x.time||'~').localeCompare(y.time||'~'));
-  if(!entries.length) return emptyState(ICO.pin,'Sem atividades neste dia','Toque em + para adicionar atrações.');
-  const cur=trip().currency;
-  return entries.map(a=>{
-    const isPast=isPastItem('atracoes',a)?' is-past':'';
-    const location=a.location?`<a class="map-link" href="${mapLinkFor('atracoes',a)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(a.location)}</a>`:'';
-    const travelTag=a.travelTimeMin?`<span class="tag">${esc(`${a.travelTimeMin} min`)}</span>`:'';
-    return `<div class="row${isPast}" data-open="atracoes:${a.id}">
-      <div class="gutter">${a.time?esc(a.time):'—'}</div>
-      <div class="body">
-        <div class="title">${esc(a.name||'Atração')}</div>
-        <div class="meta">
-          ${location?`<span>${location}</span>`:''}
-          ${travelTag}
-          ${a.notes?`<span>${esc(a.notes.slice(0,60))}${a.notes.length>60?'…':''}</span>`:''}
-        </div>
-      </div>
-      <div class="price">${a.cost?esc(money(a.cost,cur)):''}</div>
-    </div>`;
-  }).join('');
+  const atracoesDia=items('atracoes').filter(a=>a.date===date).map(a=>({time:a.time||'',html:renderAtracaoRow(a)}));
+  const deslocamentosDia=items('deslocamentos').filter(d=>d.departDate===date).map(d=>({time:d.departTime||'',html:renderTransladoRow(d)}));
+  const entries=[...atracoesDia,...deslocamentosDia].sort((x,y)=>(x.time||'~').localeCompare(y.time||'~'));
+  if(!entries.length) return emptyState(ICO.pin,'Sem atividades neste dia','Toque em + para adicionar atrações ou deslocamentos.');
+  return entries.map(e=>e.html).join('');
 }
 
 /* =========================================================================
@@ -465,6 +485,8 @@ function formDeslocamento(d){
       <div class="field"><label>Partida — local</label><input id="f_from" value="${esc(d.from)}" placeholder="Cidade / estação"></div>
       <div class="field"><label>Chegada final — local</label><input id="f_to" value="${esc(d.to)}" placeholder="Cidade / estação"></div>
     </div>
+    <div class="field"><label>Endereço da estação/aeroporto de partida (opcional)</label>
+      <input id="f_from_addr" value="${esc(d.fromAddress)}" placeholder="Endereço completo — útil quando a cidade tem mais de uma estação"></div>
     <div class="field"><label>Partida — data</label><input id="f_dep_d" type="date" class="mono-in" value="${esc(d.departDate)}"></div>
     <div class="two">
       <div class="field"><label>Partida — hora</label>${timePickerHTML('f_dep_t', d.departTime)}</div>
@@ -562,7 +584,7 @@ function collect(kind){
     url:val('f_url'),notes:val('f_notes'),guests:Math.max(1,Number(val('f_guests'))||1),
     paid: $('#f_paid') ? $('#f_paid').checked : false, paymentDueDate: val('f_due_date')};
   if(kind==='deslocamentos') return {
-    type:val('f_type'),company:val('f_company'),from:val('f_from'),to:val('f_to'),
+    type:val('f_type'),company:val('f_company'),from:val('f_from'),to:val('f_to'),fromAddress:val('f_from_addr'),
     departDate:val('f_dep_d'),departTime:val('f_dep_t'),arriveTime:val('f_arr_t'),
     cost:num('f_cost'),notes:val('f_notes'),connections:collectConnections()};
   return {name:val('f_name'),location:val('f_location'),date:val('f_date'),time:val('f_time'),
@@ -618,6 +640,7 @@ function detail(kind,id){
     const conns=connsOf(x);
     add('Tipo',esc(x.type)); add('Companhia',esc(x.company));
     add('Partida',[esc(x.from),fmtDate(x.departDate),x.departTime].filter(Boolean).join(' · '),true);
+    add('Endereço de partida',x.fromAddress?`<a class="map-link" href="${mapsSearch(x.fromAddress)}" target="_blank" rel="noopener">${esc(x.fromAddress)}</a>`:'');
     if(conns.length){
       const legs=legsFor(x);
       const legsHTML=legs.map((leg,i)=>{
