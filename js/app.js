@@ -831,5 +831,17 @@ setHeaderH();
 
 /* service worker: só ativa quando servido por http(s) (ex.: GitHub Pages). Em file:// não faz nada. */
 if('serviceWorker' in navigator && location.protocol.startsWith('http')){
-  navigator.serviceWorker.register('sw.js').catch(()=>{});
+  navigator.serviceWorker.register('sw.js').then(reg=>{
+    reg.update();
+    // no iOS o app fica "vivo" em background; ao voltar ao primeiro plano, checa se há versão nova.
+    document.addEventListener('visibilitychange', ()=>{
+      if(document.visibilityState==='visible') reg.update();
+    });
+  }).catch(()=>{});
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', ()=>{
+    if(refreshing) return;
+    refreshing = true;
+    location.reload();
+  });
 }

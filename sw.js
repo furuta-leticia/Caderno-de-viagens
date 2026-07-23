@@ -1,7 +1,7 @@
 /* Caderno de Viagem — service worker
    Guarda o "casco" do app em cache para abrir 100% offline (cold start).
    Os DADOS ficam em localStorage/IndexedDB, não passam por aqui. */
-const CACHE = 'caderno-v5';
+const CACHE = 'caderno-v9';
 const ASSETS = ['./', './index.html', './manifest.json', './icon.svg', './icon-192.png', './icon-512.png',
   './css/style.css', './js/app.js'];
 
@@ -21,11 +21,13 @@ self.addEventListener('fetch', e => {
   if (req.method !== 'GET') return;
   // Só cuidamos dos arquivos do próprio app; mapas/links externos passam direto.
   if (new URL(req.url).origin !== location.origin) return;
+  // Network-first: busca sempre a versão mais nova quando há conexão;
+  // só cai pro cache (e vira offline-first de fato) se a rede falhar.
   e.respondWith(
-    caches.match(req).then(cached => cached || fetch(req).then(res => {
+    fetch(req).then(res => {
       const copy = res.clone();
       caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {});
       return res;
-    }).catch(() => caches.match('./index.html')))
+    }).catch(() => caches.match(req).then(cached => cached || caches.match('./index.html')))
   );
 });
